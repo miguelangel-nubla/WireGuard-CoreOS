@@ -20,7 +20,7 @@ gpg2 -q --import --keyid-format LONG CoreOS_Image_Signing_Key.asc
 for GROUP in stable beta alpha
 do
 	# only build for version > 2020
-	for VERSION in $(curl -s https://coreos.com/releases/releases-$GROUP.json | jq -r 'keys | map(split(".")) | map(select(.[0] | tonumber > 2020)) | map(join(".")) | sort | reverse | .[0:2] | .[]')
+	for VERSION in $(curl -s https://coreos.com/releases/releases-$GROUP.json | jq -r 'keys | map(split(".")) | map(select(.[0] | tonumber > 2020)) | map(join(".")) | sort | reverse | .[0:3] | .[]')
 	do
 		url="https://$GROUP.release.core-os.net/amd64-usr/${VERSION}/coreos_developer_container.bin.bz2"
 		localimage="coreos_developer_container-${GROUP}_${VERSION}.bin"
@@ -49,14 +49,14 @@ do
 			echo "Trying to build $ITEM"
 			if sudo systemd-nspawn -q --bind="$PWD:/host" --image="$localimage" /bin/bash /host/build-torcx-wireguard.sh "${PKG}" "${BUILD_TAG}"
 			then
-				sudo mv -f "${PKG}:${BUILD_TAG}.torcx.tgz" "${PKG}:${REFERENCE}.torcx.tgz"
+				sudo mv -f "${PKG}:${BUILD_TAG}.torcx.tgz" "${PKG}.${REFERENCE}.torcx.tgz"
 				echo "Success building $ITEM"
 
 				if [ $TRAVIS ]
 				then
 					echo "Uploading to GitHub releases..."
-					ghr -b "Automatic [Travis CI](https://travis-ci.org/miguelangel-nubla/WireGuard-CoreOS/) build" -replace "${BUILD_TAG}" "${PKG}:${REFERENCE}.torcx.tgz"
-					ghr -b "This is a helper release tag with the latest WireGuard binaries for each CoreOS release. Note that WireGuard versions differ between packages" -replace "latest-all" "${PKG}:${REFERENCE}.torcx.tgz" || true #keep existing on error and continue
+					ghr -b "Automatic [Travis CI](https://travis-ci.org/miguelangel-nubla/WireGuard-CoreOS/) build. If the package for your CoreOS release is not in this tag then it is not compatible. Look for a previous WireGuard release or take a look at [latest-all](https://github.com/miguelangel-nubla/WireGuard-CoreOS/releases/tag/latest-all)" -replace "${BUILD_TAG}" "${PKG}.${REFERENCE}.torcx.tgz"
+					ghr -b "This is a helper release tag with the latest WireGuard binaries for each CoreOS release. Note that WireGuard versions differ between packages." -replace "latest-all" "${PKG}.${REFERENCE}.torcx.tgz"
 					echo "Done."
 				fi
 
