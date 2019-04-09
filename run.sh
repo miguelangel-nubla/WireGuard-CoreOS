@@ -49,18 +49,19 @@ do
 			echo "Trying to build $ITEM"
 			if sudo systemd-nspawn -q --bind="$PWD:/host" --image="$localimage" /bin/bash /host/build-torcx-wireguard.sh "${PKG}" "${BUILD_TAG}"
 			then
-				sudo mv -f "${PKG}:${BUILD_TAG}.torcx.tgz" "${PKG}.${REFERENCE}.torcx.tgz"
+				RELEASE_FILE="${PKG}.${REFERENCE}.torcx.tgz"
+				sudo mv -f "${PKG}:${BUILD_TAG}.torcx.tgz" "${RELEASE_FILE}"
 				echo "Success building $ITEM"
 
 				if [ $TRAVIS ]
 				then
 					echo "Uploading to GitHub releases..."
-					ghr -b "Automatic [Travis CI](https://travis-ci.org/miguelangel-nubla/WireGuard-CoreOS/) build. If the package for your CoreOS release is not in this tag then it is not compatible. Look for a previous WireGuard release or take a look at [latest-all](https://github.com/miguelangel-nubla/WireGuard-CoreOS/releases/tag/latest-all)" -replace "${BUILD_TAG}" "${PKG}.${REFERENCE}.torcx.tgz"
-					ghr -b "This is a helper release tag with the latest WireGuard binaries for each CoreOS release. Note that WireGuard versions differ between packages." -replace "latest-all" "${PKG}.${REFERENCE}.torcx.tgz"
+					ghr -b "Automatic [Travis CI](https://travis-ci.org/miguelangel-nubla/WireGuard-CoreOS/) build. If the package for your CoreOS release is not in this tag then it is not compatible. Look for a previous WireGuard release or take a look at [latest-all](https://github.com/miguelangel-nubla/WireGuard-CoreOS/releases/tag/latest-all)" -replace "${BUILD_TAG}" "${RELEASE_FILE}"
+					ghr -b "This is a helper release tag with the latest WireGuard binaries for each CoreOS release. Note that WireGuard versions differ between packages." -replace "latest-all" "${RELEASE_FILE}"
 					echo "Done."
 				fi
 
-				sudo rm -f "${PKG}:${REFERENCE}.torcx.tgz"
+				sudo rm -f "${RELEASE_FILE}"
 				break
 			else
 				echo "Error building $ITEM"
