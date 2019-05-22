@@ -17,61 +17,79 @@ git clone -q "${PKG_REPO}" "${PKG}-source"
 curl -s -O https://coreos.com/security/image-signing-key/CoreOS_Image_Signing_Key.asc
 gpg2 -q --import --keyid-format LONG CoreOS_Image_Signing_Key.asc
 
-for GROUP in stable beta alpha
-do
-	# only build for version > 2020
-	for VERSION in $(curl -s https://coreos.com/releases/releases-$GROUP.json | jq -r 'keys | map(split(".")) | map(select(.[0] | tonumber > 2020)) | map(join(".")) | sort | reverse | .[0:3] | .[]')
+
+function build {
+	url="https://$GROUP.release.core-os.net/amd64-usr/${VERSION}/coreos_developer_container.bin.bz2"
+	localimage="coreos_developer_container-${GROUP}_${VERSION}.bin"
+	logfile="$PWD/${PKG}.log"
+
+	echo "Downloading $url"
+	curl -Ls "$url" -o "$localimage.bz2"
+	gpg2 -q --verify <(curl -Ls "$url.sig") "$localimage.bz2" 2>/dev/null
+	bzip2 -df "$localimage.bz2"
+
+	# fallback to previous versions until one is built without errors
+	for BUILD_TAG in $(git -C WireGuard-source tag --sort=-refname | head -15)
 	do
-		url="https://$GROUP.release.core-os.net/amd64-usr/${VERSION}/coreos_developer_container.bin.bz2"
-		localimage="coreos_developer_container-${GROUP}_${VERSION}.bin"
-		logfile="$PWD/${PKG}.log"
+		git -C WireGuard-source checkout -q "${BUILD_TAG}"
 
-		echo "Downloading $url"
-		curl -Ls "$url" -o "$localimage.bz2"
-		gpg2 -q --verify <(curl -Ls "$url.sig") "$localimage.bz2" 2>/dev/null
-		bzip2 -df "$localimage.bz2"
+		REFERENCE="CoreOS_${VERSION}"
+		#check if WireGuard release for this CoreOS version is already built and published in the GitHub repository
+		url="https://github.com/miguelangel-nubla/WireGuard-CoreOS/releases/download/${BUILD_TAG}/${PKG}.${REFERENCE}.torcx.tgz"
+		if [ $TRAVIS ] && [ $(curl -L --write-out %{http_code} --silent --output /dev/null "$url") -eq 200 ] ;
+		then
+			echo "Release ${BUILD_TAG} for ${REFERENCE} found in $url, skipping"
+			break
+		fi
 
-		# fallback to previous versions until one is built without errors
-		for BUILD_TAG in $(git -C WireGuard-source tag --sort=-refname | head -15)
-		do
-			git -C WireGuard-source checkout -q "${BUILD_TAG}"
+		ITEM="WireGuard release ${BUILD_TAG} for CoreOS ${GROUP} ${VERSION}"
+		echo "Trying to build $ITEM"
+		if sudo systemd-nspawn -q --bind="$PWD:/host" --image="$localimage" /bin/bash /host/build-torcx-wireguard.sh "${PKG}" "${BUILD_TAG}"
+		then
+			RELEASE_FILE="${PKG}.${REFERENCE}.torcx.tgz"
+			sudo mv -f "${PKG}:${BUILD_TAG}.torcx.tgz" "${RELEASE_FILE}"
+			echo "Success building $ITEM"
 
-			REFERENCE="CoreOS_${VERSION}"
-			#check if WireGuard release for this CoreOS version is already built and published in the GitHub repository
-			url="https://github.com/miguelangel-nubla/WireGuard-CoreOS/releases/download/${BUILD_TAG}/${PKG}.${REFERENCE}.torcx.tgz"
-			if [ $TRAVIS ] && [ $(curl -L --write-out %{http_code} --silent --output /dev/null "$url") -eq 200 ] ;
+			if [ $TRAVIS ]
 			then
-				echo "Release ${BUILD_TAG} for ${REFERENCE} found in $url, skipping"
-			    break
-			fi
-
-			ITEM="WireGuard release ${BUILD_TAG} for CoreOS ${GROUP} ${VERSION}"
-			echo "Trying to build $ITEM"
-			if sudo systemd-nspawn -q --bind="$PWD:/host" --image="$localimage" /bin/bash /host/build-torcx-wireguard.sh "${PKG}" "${BUILD_TAG}"
-			then
-				RELEASE_FILE="${PKG}.${REFERENCE}.torcx.tgz"
-				sudo mv -f "${PKG}:${BUILD_TAG}.torcx.tgz" "${RELEASE_FILE}"
-				echo "Success building $ITEM"
-
-				if [ $TRAVIS ]
-				then
-					echo "Uploading to GitHub releases..."
-					ghr -b "Automatic [Travis CI](https://travis-ci.org/miguelangel-nubla/WireGuard-CoreOS/) build. If the package for your CoreOS release is not in this tag then it is not compatible. Look for a previous WireGuard release or take a look at [latest-all](https://github.com/miguelangel-nubla/WireGuard-CoreOS/releases/tag/latest-all)" -replace "${BUILD_TAG}" "${RELEASE_FILE}"
-					ghr -b "This is a helper release tag with the latest WireGuard binaries for each CoreOS release. Note that WireGuard versions differ between packages." -replace "latest-all" "${RELEASE_FILE}"
-					echo "Done."
-				fi
+				echo "Uploading to GitHub releases..."
+				ghr -b "Automatic [Travis CI](https://travis-ci.org/miguelangel-nubla/WireGuard-CoreOS/) build. If the package for your CoreOS release is not in this tag then it is not compatible. Look for a previous WireGuard release or take a look at [latest-all](https://github.com/miguelangel-nubla/WireGuard-CoreOS/releases/tag/latest-all)" -replace "${BUILD_TAG}" "${RELEASE_FILE}"
+				ghr -b "This is a helper release tag with the latest WireGuard binaries for each CoreOS release. Note that WireGuard versions differ between packages." -replace "latest-all" "${RELEASE_FILE}"
+				echo "Done."
 
 				sudo rm -f "${RELEASE_FILE}"
-				break
-			else
-				echo "Error building $ITEM"
 			fi
-		done
 
-		rm "$localimage"
+			break
+		else
+			echo "Error building $ITEM"
+		fi
 	done
-done
 
-rm -Rf .tmp
+	rm "$localimage"
+}
+
+
+if [ $# -eq 2 ] # build for {GROUP} {VERSION}
+then
+	GROUP=$1
+	VERSION=$2
+	build
+else
+	for GROUP in stable beta alpha
+	do
+		# only build for version > 2020
+		for VERSION in $(curl -s https://coreos.com/releases/releases-$GROUP.json | jq -r 'keys | map(split(".")) | map(select(.[0] | tonumber > 2020)) | map(join(".")) | sort | reverse | .[0:3] | .[]')
+		do
+
+			build
+		done
+	done
+
+	if [ $TRAVIS ]
+	then
+		rm -Rf .tmp
+	fi
+fi
 
 echo "Success!"
