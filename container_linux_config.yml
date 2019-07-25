@@ -55,13 +55,30 @@ storage:
           source /etc/os-release
 
           PKG="/var/lib/torcx/store/${VERSION_ID}/WireGuard:CoreOS_${VERSION_ID}.torcx.tgz"
-          if [ -f "${PKG}" ]
+          BIN="/var/run/torcx/bin/wg"
+          if [ -f "${BIN}" ]
           then
             exit 0
           fi
 
           mkdir -p "/var/lib/torcx/store/${VERSION_ID}"
-          wget https://github.com/miguelangel-nubla/WireGuard-CoreOS/releases/download/latest-all/WireGuard.CoreOS_${VERSION_ID}.torcx.tgz -O "${PKG}"
+
+          URL="https://github.com/miguelangel-nubla/WireGuard-CoreOS/releases/download/latest-all/WireGuard.CoreOS_${VERSION_ID}.torcx.tgz"
+          if [[ $(curl -s -o /dev/null -I -w "%{http_code}" "$URL") = 302 ]]
+          then
+            wget "$URL" -O "${PKG}"
+          else
+            TMP_DIR=$(mktemp -d -t tmp-wireguard-XXXXXXXXXX --tmpdir=/home/core)
+            git clone https://github.com/miguelangel-nubla/WireGuard-CoreOS.git $TMP_DIR
+
+            cd $TMP_DIR
+            source /usr/share/coreos/update.conf
+
+            ./run.sh "$GROUP" "$VERSION_ID"
+
+            mv -f ".tmp/WireGuard.CoreOS_${VERSION_ID}.torcx.tgz" "${PKG}"
+          fi
+
           jq '.value.images += [{ "name": "WireGuard", "reference": "'CoreOS_${VERSION_ID}'" }]' /usr/share/torcx/profiles/vendor.json > /etc/torcx/profiles/wg.json
           echo wg > /etc/torcx/next-profile
 
