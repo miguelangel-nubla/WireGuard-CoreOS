@@ -22,6 +22,14 @@ jq '.value.images += [{ "name": "WireGuard", "reference": "'CoreOS_${VERSION_ID}
 ```
 * `echo wg > /etc/torcx/next-profile`
 * Reboot. WireGuard should be available in `/run/torcx/bin/wg`
+* Load kernel modules
+```
+source /run/metadata/torcx
+/sbin/modprobe ip6_udp_tunnel
+/sbin/modprobe udp_tunnel
+/sbin/insmod ${TORCX_UNPACKDIR}/WireGuard/lib/modules/$(uname -r)/extra/wireguard.ko
+```
+* Done. Load you config with `/run/torcx/bin/wg-quick`
 
 ## How to handle CoreOS updates
 The `/etc/wireguard-setup` script at [the example Container Linux Config](container_linux_config.yml) will try to fetch the torcx package for the new CoreOS version.
