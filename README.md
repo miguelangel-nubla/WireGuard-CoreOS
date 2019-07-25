@@ -23,6 +23,11 @@ jq '.value.images += [{ "name": "WireGuard", "reference": "'CoreOS_${VERSION_ID}
 * `echo wg > /etc/torcx/next-profile`
 * Reboot. WireGuard should be available in `/run/torcx/bin/wg`
 
+## How to handle CoreOS updates
+The `/etc/wireguard-setup` script at [the example Container Linux Config](container_linux_config.yml) will try to fetch the torcx package for the new CoreOS version.
+
+If it fails or there are no packages available for the new version, it will fallback to try building WireGuard directly on the target machine.
+
 ## Build yourself
 For Ubuntu, git clone this repo, then
 ```
